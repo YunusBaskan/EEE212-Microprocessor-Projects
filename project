@@ -1,0 +1,414 @@
+Receiver codes:
+-------------------------------------------------
+#include "mbed.h"
+#include "TextLCD.h"
+#include "MAX30100_PulseOximeter.h"
+
+TextLCD lcd( PTE20, PTE21,PTE22, PTE23, PTE29, PTE30, TextLCD::LCD16x2 );
+#define REPORTING_PERIOD_MS     1000
+
+DigitalOut en1(PTA13); // 1.nin enableı
+DigitalOut en2(PTD5);    //4.nün enableı
+PwmOut pwm(PTD0);    // 1.nin hızı
+PwmOut pwm2(PTD2);    // 4.nün hızı
+
+
+PwmOut buzzer(D2);
+float freq[]={450,339,222,233,978,432,567,901,123,321,555,442}; //frequency array
+float numbers[]={1,1,1,1,1};     //beat array
+
+Serial device(PTA2,PTA1,9600);
+
+
+int main()
+{
+ 
+pwm.period(0.01f);
+pwm2.period(0.01f);
+pwm = 1.0f;
+pwm2 = 1.0f;
+
+ while (true) {
+         
+        
+         if(device.readable())
+            {   
+                  if( device.getc() == 'a' )
+                  {
+                        lcd.printf("Not on cradle");     
+                        
+                        buzzer.period(1/(freq[0]));    // set PWM period
+                        buzzer=0.5;                         // set duty cycle
+                        wait(0.005*numbers[1]);                  // hold for beat period
+                        wait(0.9);
+                        lcd.cls();
+                        
+                  }
+                  else if( device.getc() == 'b' )
+                  {
+                        lcd.printf("Sleeping...");
+                        
+                        buzzer.period(0);
+                        buzzer = 0;
+                        wait(0.9);
+                        
+                        lcd.cls();
+                   }  
+                  
+                  
+                  if( device.getc() == 'h' )
+                  {
+                        lcd.printf("Place is hot!");     
+                        wait(0.1);
+                        lcd.cls();
+                       buzzer.period(1/(freq[10]));    // set PWM period
+                        buzzer=0.5;                         // set duty cycle
+                        wait(0.5*numbers[1]);                  // hold for beat period
+                      
+                        en1 = 0;
+                        en2 = 1;
+                        wait(1);  
+                        en1 = 0;
+                        en2 = 0;
+                        wait(1);
+                        en1 = 1;
+                        en2 = 0;
+                        wait(1);
+                         en1 = 0;
+                        en2 = 0;
+               }
+                  else if( device.getc() == 'd' )
+                  {
+                        lcd.printf("Place is normal!");
+                        wait(0.1);
+                        lcd.cls();
+                        buzzer.period(0);
+                        buzzer = 0;
+                   }
+                   else if( device.getc() == 'W' )
+                   {
+                        lcd.printf("Data is not received!");
+                        wait(0.2);
+                        lcd.cls();    
+                    }
+                  else if( device.getc() == 'u' )
+                  {
+                         lcd.printf("Waking up!!!");     
+                        wait(0.1);
+                        lcd.cls();
+                        buzzer.period(1/(freq[10]));    // set PWM period
+                        buzzer=0.5;                         // set duty cycle
+                        wait(0.5*numbers[1]);                  // hold for beat period
+                   }
+                  else if( device.getc() == 'n' )
+                  {
+                        lcd.printf("Sleeping!!!");
+                        wait(0.1);
+                        lcd.cls();
+                        buzzer.period(0);
+                        buzzer = 0;
+                   }
+                          
+             }
+              
+          else
+          {
+                        lcd.printf("Waiting...");
+                        wait(0.1);
+                        lcd.cls();
+           }          
+     }    
+                
+ }  
+
+
+Transmitter codes:
+----------------------------------------------------
+
+#include "mbed.h"
+#include "HX711.h"
+#include "TextLCD.h"
+#include "SI7021.h"
+#include "mbed.h"
+#include "Keypad.h"
+#include "MAX30100_PulseOximeter.h"
+#define REPORTING_PERIOD_MS   1000
+
+Keypad kpad(PTC4, PTC3, PTC0, PTC7, PTC11, PTC10, PTC6, PTC5);
+TextLCD lcd( PTE20, PTE21, PTE22, PTE23, PTE29, PTE30, TextLCD::LCD16x2);
+
+PulseOximeter pulsing;
+Timer timer1;
+Timer beslik;
+
+int hearthratesample;
+float heartheratesum;
+float pulse;
+float temperature;
+int sayi = 0;
+int yunus = 0;
+
+Serial device( PTA2, PTA1,9600);
+
+I2C          i2c(PTC9,PTC8); //1.si SDA, 2. SCL
+
+int averageSamples = 100;
+float calibrefactor = 420;
+char rs[100],rcv[100];
+
+SI7021<I2C>  si7021(&i2c);
+
+// Callback (registered below) fired when a pulse is detected
+void onBeatDetected()
+{
+    lcd.printf("!");
+}
+
+void setup()
+{
+    lcd.printf("setupping");
+    wait(1);
+    lcd.cls();
+
+    if (!pulsing.begin(PULSEOXIMETER_DEBUGGINGMODE_PULSEDETECT)) {
+        lcd.printf("ERROR");
+        
+    }
+
+    pulsing.setOnBeatDetectedCallback(onBeatDetected);
+}
+
+
+void loop()
+{
+    
+    wait(0.2);
+    
+      timer1.start();
+      beslik.start();
+      while(beslik.read()<5)
+      {
+          pulsing.update();
+           
+           if (timer1.read_ms() > REPORTING_PERIOD_MS) {
+        timer1.stop();
+        timer1.reset();
+        pulse = pulsing.getHeartRate();
+        if( pulse >= 50.0){
+        lcd.cls();
+        lcd.printf("H:");
+        pulse = pulse + 20;
+        heartheratesum = heartheratesum + pulse;
+        lcd.printf("%.2f",pulse);
+        hearthratesample = hearthratesample + 1;
+        }
+        timer1.start();  
+            
+        }
+          
+    }
+    
+    
+    
+        beslik.stop();
+        lcd.cls();
+        lcd.locate(0,0);
+        heartheratesum = (heartheratesum / hearthratesample);
+        lcd.printf("Heart Rate %.2f ",heartheratesum);
+        beslik.reset();
+        wait(0.1);
+        
+        if( heartheratesum >= 30 )
+        {
+            if( device.writeable() )
+               {
+                    
+                        device.putc('u');
+                        wait_us(0.1);
+              
+                 }
+            
+        }
+        else
+        {
+            if( device.writeable() )
+               {
+                    
+                        device.putc('n');
+                        wait_us(0.1);
+              
+               }    
+            
+        }
+        
+        
+       
+}
+
+
+
+
+
+int main()
+{   
+    DigitalOut sck(PTD1);
+    DigitalIn data2(PTD3);
+    HX711 weightsensor(PTD3,PTD1);
+    weightsensor.setScale(0);
+    weightsensor.tare(); //Reset the weightsensor to 0
+    weightsensor.setScale(calibrefactor); 
+     
+      
+
+    float weight;
+    char key;
+    int released = 1;
+    bool foo = true;
+    
+    do{
+                           //read the current key pressed
+        //lcd.cls();
+          key = kpad.ReadKey();  
+      
+     if(key == '\0')
+         released = 1;                  //set the flag when all keys are released
+         
+     if((key != '\0') && (released == 1)) {  //if a key is pressed AND previous key was released
+                    
+             released = 0;  
+             foo =  false;  
+             //lcd.printf("%c",key); 
+                  
+                    //clear the flag to indicate that key is still pressed
+         }
+     }while(foo);
+
+
+
+while(kpad.ReadKey() != '8')
+{
+    if( key == '1')
+    {
+        si7021_measurements_t  data111;
+         bool                   ok;
+      
+        ok = si7021.read(&data111);
+        lcd.printf("Temp.: " );
+        
+        lcd.printf("%.2f", data111.temp_C);
+        
+        lcd.locate(0,1);
+        
+        lcd.printf("Hum. :%.2f", data111.humidity_PR);
+        wait(0.1);
+        lcd.cls();
+         if (ok)
+         
+         
+         
+          {
+            
+             //28.5
+           temperature = data111.temp_C;
+          
+           if(temperature > 30)
+           {
+             if( device.writeable() )
+               {
+                    
+                        device.putc('h');
+                        wait_us(0.1);
+              
+                 }
+             
+            }
+            else
+            {
+                  if( device.writeable() )
+               {
+                    
+                    device.putc('d');
+                    wait_us(0.1);
+                    
+                    
+                }
+                
+            }
+         }
+      else 
+            {
+                device.putc('W');
+                wait_us(0.1);
+            }
+      
+      
+    }
+    
+    
+  else if(key == '2')
+  
+  {
+
+   
+  //device.attach(&Tx_interrupt, Serial::TxIrq);
+          
+   
+    
+   /* if( emin == 0 )
+    {
+        emin++;
+        weightsensor.tare(); //Reset the weightsensor to 0
+    }
+    */ 
+    
+    weight = (-1)*weightsensor.getGram();
+    
+       
+        
+        lcd.printf("Weight: %.2f", weight);
+        wait(0.2);
+        lcd.cls();
+        
+       weightsensor.buffer = 0;
+       
+      if(weight > 5 || weight < -5)
+       {
+             if( device.writeable() )
+               {
+                    device.putc('b');
+                    
+                }            
+       }
+        else
+        {
+                  if( device.writeable() )
+               {
+                    device.putc('a');
+                   
+                }
+                
+       }
+    }
+       
+    else if( key == '4' )
+    {
+        if( yunus == 0 )
+        {
+            setup();
+            yunus = 1;
+        }
+        loop();
+        
+    }    
+ }
+    
+    NVIC_SystemReset();
+}
+
+
+
+
+
+
+
+
